@@ -1,0 +1,255 @@
+{
+  "name": "ChainBridge Gas Price Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule_1",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.etherscan.io/api",
+        "options": {
+          "qs": {
+            "module": "gastracker",
+            "action": "gasoracle",
+            "apikey": "YOUR_ETHERSCAN_API_KEY"
+          }
+        }
+      },
+      "id": "http_1",
+      "name": "Get ETH Gas Prices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.polygonscan.com/api",
+        "options": {
+          "qs": {
+            "module": "gastracker",
+            "action": "gasoracle",
+            "apikey": "YOUR_POLYGONSCAN_API_KEY"
+          }
+        }
+      },
+      "id": "http_2",
+      "name": "Get Polygon Gas Prices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "const ethGas = items[0].json;\nconst polyGas = items[1].json;\n\n// Parse gas prices\nconst ethPrice = parseFloat(ethGas.result.ProposeGasPrice);\nconst polyPrice = parseFloat(polyGas.result.ProposeGasPrice);\n\n// Calculate if it's a good time to bridge\nconst ethLowThreshold = 30; // gwei\nconst polyLowThreshold = 100; // gwei\n\nconst alerts = [];\n\n// Check Ethereum\nif (ethPrice < ethLowThreshold) {\n  alerts.push({\n    chain: 'Ethereum',\n    gasPrice: ethPrice,\n    alert: 'LOW_GAS',\n    message: `🚨 ETH gas is LOW: ${ethPrice} gwei! Great time to bridge FROM Ethereum.`\n  });\n}\n\n// Check Polygon\nif (polyPrice < polyLowThreshold) {\n  alerts.push({\n    chain: 'Polygon',\n    gasPrice: polyPrice,\n    alert: 'LOW_GAS',\n    message: `🚨 Polygon gas is LOW: ${polyPrice} gwei! Great time to bridge TO Polygon.`\n  });\n}\n\n// Store historical data\nconst timestamp = new Date().toISOString();\nconst historicalData = {\n  timestamp,\n  ethereum: ethPrice,\n  polygon: polyPrice,\n  alerts: alerts.length\n};\n\nreturn [{\n  json: {\n    current: {\n      ethereum: ethPrice,\n      polygon: polyPrice\n    },\n    alerts,\n    historical: historicalData\n  }\n}];"
+      },
+      "id": "function_1",
+      "name": "Analyze Gas Prices",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.alerts.length}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if_1",
+      "name": "Check for Alerts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_GAS_TRACKING_SHEET_ID",
+        "range": "GasPrices!A:Z",
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        }
+      },
+      "id": "sheets_1",
+      "name": "Log Gas Prices",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendHtml",
+        "sendTo": "={{$json.subscribers}}",
+        "subject": "🚨 ChainBridge Gas Alert!",
+        "html": "=<h2>Gas Price Alert!</h2>\n{{$json.alerts.map(alert => `<p>${alert.message}</p>`).join('')}}\n<br>\n<p><strong>Current Gas Prices:</strong></p>\n<ul>\n<li>Ethereum: {{$json.current.ethereum}} gwei</li>\n<li>Polygon: {{$json.current.polygon}} gwei</li>\n</ul>\n<br>\n<p><a href='https://chainbridge.xyz/dashboard'>Open ChainBridge to Bridge Now!</a></p>",
+        "options": {}
+      },
+      "id": "email_1",
+      "name": "Send Email Alerts",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://chainbridge.xyz/api/push-notifications",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alerts",
+              "value": "={{$json.alerts}}"
+            },
+            {
+              "name": "gasData",
+              "value": "={{$json.current}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http_3",
+      "name": "Send Push Notifications",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get list of subscribers who want gas alerts\n// This would normally query a database\n\nconst mockSubscribers = [\n  'user1@example.com',\n  'user2@example.com'\n];\n\nreturn [{\n  json: {\n    ...items[0].json,\n    subscribers: mockSubscribers\n  }\n}];"
+      },
+      "id": "function_2",
+      "name": "Get Alert Subscribers",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get ETH Gas Prices",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Polygon Gas Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get ETH Gas Prices": {
+      "main": [
+        [
+          {
+            "node": "Analyze Gas Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Polygon Gas Prices": {
+      "main": [
+        [
+          {
+            "node": "Analyze Gas Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Gas Prices": {
+      "main": [
+        [
+          {
+            "node": "Check for Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check for Alerts": {
+      "main": [
+        [
+          {
+            "node": "Get Alert Subscribers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Gas Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Alert Subscribers": {
+      "main": [
+        [
+          {
+            "node": "Send Email Alerts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Push Notifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 300
+  },
+  "versionId": "1",
+  "id": "chainbridge-gas-monitor-001",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "id": "monitoring",
+      "name": "Monitoring"
+    },
+    {
+      "id": "chainbridge",
+      "name": "ChainBridge"
+    }
+  ]
+}

@@ -1,0 +1,230 @@
+{
+  "name": "ChainBridge Analytics Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "chainbridge-analytics",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_1",
+      "name": "Analytics Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const event = items[0].json;\n\n// Validate event data\nif (!event.event || !event.user || !event.timestamp) {\n  throw new Error('Invalid event format');\n}\n\n// Add server timestamp\nevent.serverTimestamp = new Date().toISOString();\n\n// Calculate session info\nevent.sessionId = event.sessionId || generateSessionId(event.user);\n\n// Add geographic info if IP provided\nif (event.ip) {\n  // This would normally use a geo-IP service\n  event.geo = {\n    country: 'US',\n    region: 'CA',\n    city: 'San Francisco'\n  };\n}\n\nreturn [{\n  json: event,\n  binary: {}\n}];\n\nfunction generateSessionId(userId) {\n  const date = new Date().toISOString().split('T')[0];\n  return `${userId}-${date}`;\n}"
+      },
+      "id": "function_1",
+      "name": "Process Event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_ANALYTICS_SHEET_ID",
+        "range": "Events!A:Z",
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        }
+      },
+      "id": "sheets_1",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "resource": "database",
+        "operation": "create",
+        "databaseId": "YOUR_NOTION_DATABASE_ID",
+        "properties": {
+          "Event": "={{$json.event}}",
+          "User": "={{$json.user}}",
+          "Timestamp": "={{$json.timestamp}}",
+          "Properties": "={{JSON.stringify($json.properties)}}"
+        }
+      },
+      "id": "notion_1",
+      "name": "Log to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.event}}",
+              "value2": "bridge_optimized"
+            }
+          ]
+        }
+      },
+      "id": "if_1",
+      "name": "Check if Bridge Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "text": "=🎉 ChainBridge Success Story!\n\nUser {{$json.user}} just saved {{$json.properties.savedAmount}} on a bridge from {{$json.properties.fromChain}} to {{$json.properties.toChain}}!\n\nTotal saved by our community: ${{$json.properties.totalCommunitySavings}}\n\n#Web3Gaming #ChainBridge",
+        "additionalFields": {}
+      },
+      "id": "twitter_1",
+      "name": "Tweet Success",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "channel": "#chainbridge-metrics",
+        "text": "=:chart_with_upwards_trend: *Analytics Update*\n\nEvent: `{{$json.event}}`\nUser: `{{$json.user}}`\nTimestamp: {{$json.timestamp}}\n{{$json.properties ? 'Properties: ```' + JSON.stringify($json.properties, null, 2) + '```' : ''}}",
+        "authentication": "oAuth2",
+        "otherOptions": {}
+      },
+      "id": "slack_1",
+      "name": "Notify Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [850, 500]
+    },
+    {
+      "parameters": {
+        "content": "=### Analytics Processed\n\nEvent: {{$json.event}}\nUser: {{$json.user}}\nStatus: Success",
+        "options": {}
+      },
+      "id": "respond_1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Analytics Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Event": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Notion",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check if Bridge Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Bridge Event": {
+      "main": [
+        [
+          {
+            "node": "Tweet Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Notion": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tweet Success": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Slack": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 300
+  },
+  "versionId": "1",
+  "id": "chainbridge-analytics-001",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "id": "analytics",
+      "name": "Analytics"
+    },
+    {
+      "id": "chainbridge",
+      "name": "ChainBridge"
+    }
+  ]
+}
